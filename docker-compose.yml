@@ -1,0 +1,208 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rias}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rias}
+      POSTGRES_DB: ${POSTGRES_DB:-rias}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rias}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin} &&
+        mc mb -p local/$${MINIO_BUCKET:-rias-lake} && exit 0;
+        sleep 2;
+      done;
+      exit 1
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-rias-lake}
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.11
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --smp 1
+      - --memory 512M
+      - --mode dev-container
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"
+      - "18081:18081"
+      - "18082:18082"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rias}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-rias}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/init:/docker-entrypoint-initdb.d:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - clickhouse
+
+  prefect-server:
+    image: prefecthq/prefect:2-python3.11
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${POSTGRES_USER:-rias}:${POSTGRES_PASSWORD:-rias}@postgres:5432/${POSTGRES_DB:-rias}
+      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  lms-api:
+    build:
+      context: .
+      dockerfile: docker/lms-api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      LMS_SEED: "42"
+
+  cube:
+    build:
+      context: ./docker/cube
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      CUBEJS_DB_TYPE: clickhouse
+      CUBEJS_DB_HOST: clickhouse
+      CUBEJS_DB_PORT: "8123"
+      CUBEJS_DB_NAME: ${CLICKHOUSE_DB:-default}
+      CUBEJS_DB_USER: ${CLICKHOUSE_USER:-rias}
+      CUBEJS_DB_PASS: ${CLICKHOUSE_PASSWORD:-rias}
+      CUBEJS_API_SECRET: ${CUBEJS_API_SECRET:-dev_secret_change_me}
+      CUBEJS_DEV_MODE: "true"
+    depends_on:
+      - clickhouse
+
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: docker/streamlit/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      CUBE_API_URL: http://cube:4000/cubejs-api/v1
+      CUBEJS_API_SECRET: ${CUBEJS_API_SECRET:-dev_secret_change_me}
+    depends_on:
+      - cube
+
+  redpanda-topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.11
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "rpk topic create campus_events --brokers redpanda:9092 || true; exit 0",
+      ]
+
+  spark-lakehouse:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    profiles: ["lakehouse"]
+    depends_on:
+      - minio
+      - minio-init
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-rias-lake}
+    volumes:
+      - ./src/lakehouse:/opt/spark/work-dir
+    working_dir: /opt/spark/work-dir
+
+  flink-jobmanager:
+    profiles: ["flink"]
+    image: apache/flink:1.18.1
+    hostname: flink-jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+
+  flink-taskmanager:
+    profiles: ["flink"]
+    image: apache/flink:1.18.1
+    hostname: flink-taskmanager
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+volumes:
+  pg_data:
+  minio_data:
+  redpanda_data:
+  clickhouse_data:
+  grafana_data:

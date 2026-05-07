@@ -1,0 +1,32 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-rias" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-rias" },
+          "editorType": "sql",
+          "rawSql": "SELECT window_start, building_id, people FROM campus_occupancy_5m ORDER BY window_start ASC LIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Campus occupancy (5m windows)",
+      "type": "table"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["rias"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "",
+  "title": "RIAS Campus",
+  "uid": "rias-campus",
+  "version": 2
+}

@@ -1,0 +1,50 @@
+###
+### A complete description of a Prefect Deployment for flow 'rias-raw-ingest'
+###
+name: local-ingest
+description: null
+version: e51cf47a821b4855a0e8865a1c3752a2
+# The work queue that will handle this deployment's runs
+work_queue_name: default
+work_pool_name: null
+tags: []
+parameters: {}
+schedule: null
+schedules: []
+is_schedule_active: null
+infra_overrides: {}
+infrastructure:
+  type: process
+  env: {}
+  labels: {}
+  name: null
+  command: null
+  stream_output: true
+  working_dir: null
+  block_type_slug: process
+  _block_type_slug: process
+
+###
+### DO NOT EDIT BELOW THIS LINE
+###
+flow_name: rias-raw-ingest
+manifest_path: null
+storage: null
+path: C:\Users\janes\PycharmProjects\RIAS_project
+entrypoint: src\ingest\flow.py:ingest_academic_flow
+parameter_openapi_schema:
+  title: Parameters
+  type: object
+  properties:
+    csv_path:
+      anyOf:
+      - type: string
+      - type: 'null'
+      default: null
+      position: 0
+      title: csv_path
+  required: null
+  definitions: null
+timestamp: '2026-05-07T14:17:47.987654+00:00'
+triggers: []
+enforce_parameter_schema: null

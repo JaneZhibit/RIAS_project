@@ -1,0 +1,46 @@
+stages:
+  - test
+  - build
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+test:pytest:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt -r requirements-feast.txt
+  script:
+    - python -m pytest -q
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+
+test:docker-compose-config:
+  stage: test
+  image: docker:26-cli
+  script:
+    - docker compose version
+    - docker compose -f docker-compose.yml config >/dev/null
+
+build:images:
+  stage: build
+  image: docker:26-cli
+  privileged: true
+  services:
+    - name: docker:26-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - docker build -f docker/lms-api/Dockerfile -t rias-lms-api:ci .
+    - docker build -f docker/cube/Dockerfile -t rias-cube:ci docker/cube
+    - docker build -f docker/streamlit/Dockerfile -t rias-streamlit:ci .
+    - docker build -f docker/spark/Dockerfile -t rias-spark:ci .
+  rules:
+    - if: $CI_COMMIT_BRANCH

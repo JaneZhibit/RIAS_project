@@ -1,0 +1,2 @@
+# Feast still pulls NumPy 1.x on some releases — skip on Python 3.13+ or use Python 3.11 venv.
+feast>=0.37,<0.39; python_version < "3.13"

@@ -1,0 +1,3 @@
+# Optional: local PySpark experiments (Java required). Spark+Iceberg job runs in Docker by default.
+-r requirements.txt
+pyspark==3.5.1

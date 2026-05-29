@@ -102,12 +102,9 @@ def main() -> None:
             wstart = floor_to_window(ts, 5)
             people = len(dq)
             
-            # 3 hours offset for Moscow time (Grafana displays it as local)
-            local_wstart = wstart + timedelta(hours=3)
-            
             ch.execute(
                 "INSERT INTO campus_occupancy_5m (window_start, building_id, people) VALUES",
-                [(local_wstart.replace(tzinfo=None), bid, people)],
+                [(wstart.replace(tzinfo=None), bid, people)],
             )
             
             # Send alert if there are more than 60 people

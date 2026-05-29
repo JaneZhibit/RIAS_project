@@ -22,7 +22,8 @@ cube(`StudentAnalytics`, {
 
   measures: {
     studentCount: {
-      type: `count`,
+      sql: `student_id`,
+      type: `countDistinct`,
     },
     avgGrade: {
       sql: `avg_grade`,

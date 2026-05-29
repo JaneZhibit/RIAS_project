@@ -90,7 +90,6 @@
             "uid": "clickhouse-rias"
           },
           "editorType": "sql",
-          "format": "time_series",
           "rawSql": "SELECT window_start AS time, building_id AS metric, people FROM campus_occupancy_5m ORDER BY window_start ASC LIMIT 5000",
           "refId": "A"
         }
